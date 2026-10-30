@@ -27,3 +27,7 @@ Run all of them before you report a change as done.
 - Ask the maintainer before you post an issue, a comment, or a pull request, and before you merge.
 - Search your diff for personal values, tokens, and absolute local paths.
 - Add a `CHANGELOG.md` line under `Unreleased` if users can see the change.
+- Write commit messages, pull requests, issues, and comments in plain style:
+  - Describe the change and the reason without a subject ("Add X", "X failed because Y").
+  - Use "I" only for what you actually ran or checked. Do not use "we".
+  - Do not use em-dashes.
