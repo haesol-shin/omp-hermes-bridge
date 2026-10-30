@@ -1,11 +1,11 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { AgentEndEvent, AgentToolResult, ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { Bridge, type Host } from "./bridge.ts";
 import { ConfigStore } from "./config.ts";
-import type { ExtensionApiLike, ExtensionCtx, ToolResultLike } from "./types.ts";
 import { errText } from "./util.ts";
 
-function agentDirOf(pi: ExtensionApiLike): string {
+function agentDirOf(pi: ExtensionAPI): string {
   try {
     return pi.pi.getAgentDir();
   } catch {
@@ -13,7 +13,7 @@ function agentDirOf(pi: ExtensionApiLike): string {
   }
 }
 
-function hostFrom(pi: ExtensionApiLike, ctx: ExtensionCtx): Host {
+function hostFrom(pi: ExtensionAPI, ctx: ExtensionContext): Host {
   return {
     sendUserMessage: (text, options) => pi.sendUserMessage(text, options),
     isIdle: () => ctx.isIdle(),
@@ -22,11 +22,12 @@ function hostFrom(pi: ExtensionApiLike, ctx: ExtensionCtx): Host {
     sessionName: () => ctx.sessionManager.getSessionName(),
     setInterval: (fn, ms) => ctx.setInterval(fn, ms),
     setTimeout: (fn, ms) => ctx.setTimeout(fn, ms),
-    clearTimer: (timer) => ctx.clearTimer(timer),
+    // The bridge treats timers as opaque and only passes back what setInterval/setTimeout returned.
+    clearTimer: (timer) => ctx.clearTimer(timer as Parameters<ExtensionContext["clearTimer"]>[0]),
   };
 }
 
-export default function ompHermesBridge(pi: ExtensionApiLike): void {
+export default function ompHermesBridge(pi: ExtensionAPI): void {
   const log = (message: string) => {
     try {
       pi.logger.warn(`omp-hermes-bridge: ${message}`);
@@ -40,8 +41,8 @@ export default function ompHermesBridge(pi: ExtensionApiLike): void {
     log,
   });
 
-  const isSub = (ctx: ExtensionCtx) => ctx.agent?.kind === "sub";
-  const attach = (ctx: ExtensionCtx) =>
+  const isSub = (ctx: ExtensionContext) => ctx.agent?.kind === "sub";
+  const attach = (ctx: ExtensionContext) =>
     bridge.attach(hostFrom(pi, ctx), {
       id: ctx.sessionManager.getSessionId(),
       cwd: ctx.cwd,
@@ -49,28 +50,35 @@ export default function ompHermesBridge(pi: ExtensionApiLike): void {
     });
 
   // An unhandled throw out of an extension kills the session, so every handler is wrapped.
-  const on = (event: string, run: (e: any, ctx: ExtensionCtx) => unknown) =>
-    pi.on(event, async (e, ctx) => {
+  const guard =
+    <E>(event: string, run: (e: E, ctx: ExtensionContext) => unknown) =>
+    async (e: E, ctx: ExtensionContext): Promise<void> => {
       try {
         if (isSub(ctx)) return;
         await run(e, ctx);
       } catch (error) {
         log(`${event}: ${errText(error)}`);
       }
-    });
+    };
 
-  on("session_start", (_e, ctx) => attach(ctx));
-  on("session_switch", (_e, ctx) => attach(ctx));
-  on("session_branch", (_e, ctx) => attach(ctx));
-  on("agent_start", (_e, ctx) => {
-    attach(ctx);
-    bridge.onAgentStart();
-  });
-  on("agent_end", async (e, ctx) => {
-    attach(ctx);
-    await bridge.onAgentEnd(e.messages, e.willContinue);
-  });
-  on("session_shutdown", () => bridge.shutdown());
+  pi.on("session_start", guard("session_start", (_e, ctx) => attach(ctx)));
+  pi.on("session_switch", guard("session_switch", (_e, ctx) => attach(ctx)));
+  pi.on("session_branch", guard("session_branch", (_e, ctx) => attach(ctx)));
+  pi.on(
+    "agent_start",
+    guard("agent_start", (_e, ctx) => {
+      attach(ctx);
+      bridge.onAgentStart();
+    }),
+  );
+  pi.on(
+    "agent_end",
+    guard("agent_end", async (e: AgentEndEvent, ctx) => {
+      attach(ctx);
+      await bridge.onAgentEnd(e.messages, e.willContinue);
+    }),
+  );
+  pi.on("session_shutdown", guard("session_shutdown", () => bridge.shutdown()));
 
   const z = pi.zod;
   pi.registerTool({
@@ -87,13 +95,7 @@ export default function ompHermesBridge(pi: ExtensionApiLike): void {
     }),
     approval: "read",
     loadMode: "essential",
-    async execute(
-      _id: string,
-      params: { question: string; choices?: string[]; timeout_s?: number },
-      signal: AbortSignal | undefined,
-      _onUpdate: unknown,
-      ctx: ExtensionCtx,
-    ): Promise<ToolResultLike> {
+    async execute(_id, params: { question: string; choices?: string[]; timeout_s?: number }, signal, _onUpdate, ctx): Promise<AgentToolResult> {
       try {
         if (isSub(ctx)) {
           return { content: [{ type: "text", text: "hermes_ask is only available to the main session." }], isError: true };

@@ -2,25 +2,37 @@ import { describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import ompHermesBridge from "../src/index.ts";
-import type { ExtensionApiLike, ExtensionCtx } from "../src/types.ts";
+import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { FakeHost, queueProblems, SESSION_ID, tempDir } from "./helpers.ts";
 
-type Handler = (event: any, ctx: ExtensionCtx) => unknown;
+// The fakes below implement only what the extension calls, so they are cast to the official types.
+type Handler = (event: unknown, ctx: ExtensionContext) => unknown;
+type FakeCtx = {
+  mode: string;
+  cwd: string;
+  agent: { kind: "main" | "sub" };
+  sessionManager: { getSessionId(): string; getSessionFile(): string | undefined; getSessionName(): string | undefined };
+  isIdle(): boolean;
+  hasPendingMessages(): boolean;
+  setInterval(fn: () => void, ms: number): unknown;
+  setTimeout(fn: () => void, ms: number): unknown;
+  clearTimer(timer: unknown): void;
+};
 
 function load(agentDir: string) {
   const handlers = new Map<string, Handler>();
   let tool: any;
   const sent: unknown[] = [];
   const warnings: string[] = [];
-  const pi: ExtensionApiLike = {
-    on: (event, handler) => void handlers.set(event, handler),
-    sendUserMessage: (...args) => void sent.push(args),
-    registerTool: (t) => void (tool = t),
+  const pi = {
+    on: (event: string, handler: Handler) => void handlers.set(event, handler),
+    sendUserMessage: (...args: unknown[]) => void sent.push(args),
+    registerTool: (t: unknown) => void (tool = t),
     zod: new Proxy({}, { get: () => () => new Proxy(() => undefined, { get: () => () => new Proxy({}, { get: () => () => ({}) }) }) }),
-    logger: { warn: (m) => void warnings.push(m), debug: () => {} },
+    logger: { warn: (m: string) => void warnings.push(m), debug: () => {} },
     pi: { getAgentDir: () => agentDir },
   };
-  ompHermesBridge(pi);
+  ompHermesBridge(pi as unknown as ExtensionAPI);
   return { handlers, tool, sent, warnings };
 }
 
@@ -36,9 +48,9 @@ function setup() {
   return { dir, root };
 }
 
-function ctxFor(dir: string, kind: "main" | "sub", overrides: Partial<ExtensionCtx> = {}): ExtensionCtx {
+function ctxFor(dir: string, kind: "main" | "sub", overrides: Partial<FakeCtx> = {}): ExtensionContext {
   const host = new FakeHost(dir);
-  return {
+  const ctx: FakeCtx = {
     mode: "rpc",
     cwd: dir,
     agent: { kind },
@@ -50,6 +62,7 @@ function ctxFor(dir: string, kind: "main" | "sub", overrides: Partial<ExtensionC
     clearTimer: (t) => host.clearTimer(t),
     ...overrides,
   };
+  return ctx as unknown as ExtensionContext;
 }
 
 describe("extension wiring", () => {

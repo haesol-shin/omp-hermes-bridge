@@ -6,7 +6,7 @@ The wire format is defined only by [`../contract/`](../contract/README.md). This
 
 ## Install
 
-Requires omp with the extension API (tested on 18.10.4 sources and a 18.14.0 binary) and [Bun](https://bun.sh) as the omp runtime.
+Requires omp 18.10.4 or newer, checked against the official types of 18.10.4 (the pinned dev dependency) and run on a 18.14.0 binary; older versions are not supported. [Bun](https://bun.sh) is the omp runtime.
 
 Try it for one run:
 
@@ -21,7 +21,7 @@ extensions:
   - /path/to/omp-hermes-bridge/omp
 ```
 
-The extension has no runtime dependencies. `bun install` is only needed to run the tests.
+The extension has no runtime dependencies and imports nothing from omp at run time (`import type` only). `bun install` is only needed to run the tests and the type check.
 
 ## Configuration
 
@@ -67,6 +67,7 @@ Send events off the machine only over HTTPS or a trusted network (VPN).
 
 ```sh
 bun install --frozen-lockfile
+bun run typecheck   # tsc against the official omp types
 bun test
 ```
 

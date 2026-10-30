@@ -61,3 +61,7 @@ Rows 1 to 7 come from one full run of `bun scripts/accept.ts` before the review 
 | `omp plugin install` / `plugin link` of the `omp/` directory | Writes outside the throwaway directory (user plugin settings). Row 1d loads the same directory manifest with `-e`. |
 | A real kill inside the microsecond window between creating the marker and calling `sendUserMessage` | Cannot be aimed; row 5a builds the resulting state instead. |
 | A `willContinue: true` that is not an error retry | Only the auto-retry case was reproducible. |
+
+## Re-run after the official types change (2026-10-30)
+
+`modes-rpc` and `inbox-idle` were run again on omp 18.14.0 with a throwaway agent directory under `.tmp/`, after `omp/src/types.ts` was replaced by the official `@oh-my-pi/pi-coding-agent` types (18.10.4) and `bun run typecheck` passed. Both pass: `modes-rpc` states `idle, working, idle, ended`, one `ended` event, exit 0; `inbox-idle` one new turn, one marker entry with `attribution: "agent"`, `done/` written. `bun test`: 89 pass.

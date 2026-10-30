@@ -5,7 +5,7 @@ import { type InboxMessage, parseInbox } from "./messages.ts";
 import { type EventBody, type FetchLike, Outbox } from "./outbox.ts";
 import { JSON_FILE, MARKER_FILE, Queue } from "./queue.ts";
 import { markerLine, MarkerScanner } from "./scanner.ts";
-import type { ToolResultLike } from "./types.ts";
+import type { AgentToolResult } from "@oh-my-pi/pi-coding-agent";
 import { errText, newId, truncate, utcNow } from "./util.ts";
 
 /** What the bridge needs from omp; index.ts adapts the extension context to it. */
@@ -286,7 +286,7 @@ export class Bridge {
 
   // ---- hermes_ask --------------------------------------------------------
 
-  async ask(params: AskParams, signal: AbortSignal | undefined): Promise<ToolResultLike> {
+  async ask(params: AskParams, signal: AbortSignal | undefined): Promise<AgentToolResult> {
     const c = this.#context();
     const host = this.#host;
     const question = params.question?.trim() ?? "";
@@ -493,7 +493,7 @@ export class Bridge {
   }
 }
 
-function unavailable(text: string): ToolResultLike {
+function unavailable(text: string): AgentToolResult {
   return { content: [{ type: "text", text }], details: { status: "unavailable" } };
 }
 

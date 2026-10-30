@@ -439,10 +439,13 @@ describe("hermes_ask", () => {
     writeInbox(r.root, SESSION_ID, reply);
     await r.bridge.tick();
     const result = await pending;
-    expect(result.content[0].text).toBe(`[bridge msg_id=${reply.msg_id}]\nUse option B.`);
+    const block = result.content[0];
+    if (block?.type !== "text") throw new Error("expected a text result");
+    const text = block.text;
+    expect(text).toBe(`[bridge msg_id=${reply.msg_id}]\nUse option B.`);
     expect(r.host.sent).toHaveLength(0); // not queued as a follow-up
     expect(existsSync(inboxPath(r, reply.msg_id, "done"))).toBe(false);
-    r.host.persistToolResult(result.content[0].text);
+    r.host.persistToolResult(text);
     await settle(r.bridge);
     expect(readJson(inboxPath(r, reply.msg_id, "done")).delivered_at).toBeDefined();
     expect(existsSync(markerPath(r, reply.msg_id))).toBe(false);
