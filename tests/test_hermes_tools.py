@@ -251,10 +251,10 @@ class FakeCtx:
         self.hooks[name] = callback
 
 
-def test_register_adds_three_tools_and_the_gateway_hook(tmp_path):
+def test_register_adds_the_tools_and_the_gateway_hook(tmp_path):
     ctx = FakeCtx({"hosts": {}, "state_dir": str(tmp_path)})
     plugin.register(ctx)
-    assert set(ctx.tools) == {"omp_sessions", "omp_send", "omp_answer"}
+    assert set(ctx.tools) == {"omp_sessions", "omp_send", "omp_answer", "bridge_watch"}
     assert set(ctx.hooks) == {"pre_gateway_dispatch", "pre_llm_call"}
     for name, (_, schema, _handler) in ctx.tools.items():
         assert schema["name"] == name

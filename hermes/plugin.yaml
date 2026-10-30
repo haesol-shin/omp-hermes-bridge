@@ -10,6 +10,7 @@ provides_tools:
   - omp_sessions
   - omp_send
   - omp_answer
+  - bridge_watch
 provides_hooks:
   - pre_gateway_dispatch
   - pre_llm_call
@@ -34,3 +35,7 @@ config_schema:
     type: str
     default: ""
     description: Directory of the event_id file. Empty means <HERMES_HOME>/plugin-data/omp-bridge.
+  allow_gateway_injection:
+    type: bool
+    default: false
+    description: "Owner permission for the restart turn. Also set plugins.entries.omp-bridge.allow_gateway_injection, which Hermes itself checks."

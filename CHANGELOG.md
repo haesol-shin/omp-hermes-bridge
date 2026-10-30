@@ -11,3 +11,4 @@ All notable changes to omp-hermes-bridge are documented here. The format is base
 - Hermes plugin (`hermes/`): bridge event handling with duplicate file and notification rules, and the tools `omp_sessions`, `omp_send` and `omp_answer`.
 - Session registration carries `runs_finished`, `last_run` and the open `question`; `hermes_ask` works without a webhook (the question is then only in the session file), and `omp_sessions` lists that question.
 - `hermes/watch.py`: blocks until an omp session finishes a run, asks, ends or goes stale, then exits, so a Hermes room can wake through `terminal(background=true, notify_on_complete=true)`.
+- Hermes plugin: tool `bridge_watch` and a watch list; after a gateway restart the plugin asks each room to re-arm its watchers (`allow_gateway_injection` required).

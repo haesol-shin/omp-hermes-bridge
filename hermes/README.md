@@ -97,6 +97,16 @@ The report is a hint. After a gateway restart the output and exit code of a reco
 
 The webhook route is optional for this. A webhook run is a separate one-shot Hermes session with no room context, and its bare `[SILENT]` reply turns into a visible warning (upstream NousResearch/hermes-agent#118270, open). The watcher and the session file need neither the route nor `pending-questions.json`.
 
+### Surviving a gateway restart
+
+After a restart Hermes recovers a running watcher as detached, but its output and exit code are lost, and a watcher that exited while the gateway was down is not reported. The plugin therefore keeps a watch list.
+
+- `bridge_watch(action="add", session_key, command)` after you start a watcher, `remove(watch_id)` when its final state is handled, `list`. Records live in `watches.json` in `state_dir` (mode 0600, atomic writes): `watch_id`, `session_key`, the exact command line, `started_at`.
+- `session_key` is the documented key of the room you are in: `agent:main:telegram:dm:<chat_id>`, with `:<thread_id>` for a topic, `agent:main:<platform>:group:<chat_id>:<user_id>` for groups. See [Per-Platform Session Tracking](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/sessions.md) and [Injecting Messages](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/plugins.md). The plugin only checks the shape (`agent:<profile>:<platform>:...`); `inject_message` accepts or rejects the key, and the gateway logs an unknown one. Hermes offers no public way for a tool to read its own key, so the room supplies it from the platform, chat and thread it knows.
+- At plugin load a daemon thread calls `inject_message(text, session_key=...)` for each record every 5 seconds until it returns `True` or 10 minutes pass (then the record stays for the next start). The text says the gateway restarted, the watcher may be gone, to re-read the state and re-arm with the exact command if the work still runs; it is data, not a user instruction.
+- The owner must allow it: set `allow_gateway_injection: true` under `plugins.entries.omp-bridge.settings` (checked by this plugin) and `plugins.entries.omp-bridge.allow_gateway_injection: true` (checked by Hermes). Without the first, the plugin logs one warning and does nothing.
+- Limit: `inject_message` has no public way to tell a gateway from a CLI. In a CLI session with leftover records the text would go to that CLI; the records come from rooms, so keep them only where a gateway runs.
+
 ## Limits
 
 - Queued is not delivered. The tools report `queued`; omp confirms delivery in its own `done/` folder, and the plugin does not read it.
