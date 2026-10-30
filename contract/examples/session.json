@@ -8,5 +8,10 @@
   "pid": 42137,
   "started_at": "2026-10-30T05:00:00Z",
   "state": "working",
+  "runs_finished": 2,
+  "last_run": {
+    "result": "ended",
+    "at": "2026-10-30T05:02:40Z"
+  },
   "updated_at": "2026-10-30T05:03:12Z"
 }
