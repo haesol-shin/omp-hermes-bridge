@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/haesol-shin/omp-hermes-bridge/contract/schema/done-message.schema.json",
+  "title": "Finished inbox message",
+  "description": "Written by the omp extension to <root>/inbox/<session_id>/done/<msg_id>.json. The original message plus exactly one outcome: delivered_at, or dropped + dropped_at.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "msg_id",
+    "kind",
+    "text",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "msg_id": {
+      "$ref": "#/$defs/uuid4"
+    },
+    "kind": {
+      "enum": [
+        "prompt",
+        "answer"
+      ]
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reply_to": {
+      "$ref": "#/$defs/uuid4",
+      "description": "Question id. Required when kind is answer."
+    },
+    "created_at": {
+      "$ref": "#/$defs/utc_time"
+    },
+    "delivered_at": {
+      "$ref": "#/$defs/utc_time"
+    },
+    "dropped": {
+      "const": "late"
+    },
+    "dropped_at": {
+      "$ref": "#/$defs/utc_time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "answer"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "reply_to"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "reply_to"
+          ]
+        }
+      }
+    },
+    {
+      "oneOf": [
+        {
+          "required": [
+            "delivered_at"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "dropped"
+                ]
+              },
+              {
+                "required": [
+                  "dropped_at"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "dropped",
+            "dropped_at"
+          ],
+          "not": {
+            "required": [
+              "delivered_at"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "if": {
+        "required": [
+          "dropped"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "answer"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuid4": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "utc_time": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$",
+      "description": "UTC ISO 8601 ending in Z."
+    }
+  }
+}

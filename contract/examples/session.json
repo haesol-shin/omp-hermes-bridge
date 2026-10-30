@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "host_id": "laptop",
+  "session_id": "019a2f00-0000-7000-8000-000000000001",
+  "cwd": "/home/user/dev/example",
+  "repo": "/home/user/dev/example",
+  "title": "Fix login bug",
+  "pid": 42137,
+  "started_at": "2026-10-30T05:00:00Z",
+  "state": "working",
+  "updated_at": "2026-10-30T05:03:12Z"
+}

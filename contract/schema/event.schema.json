@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/haesol-shin/omp-hermes-bridge/contract/schema/event.schema.json",
+  "title": "Event (omp to Hermes)",
+  "description": "POST body sent by the omp extension to the Hermes webhook route. Unsent events wait in <root>/outbox/<event_id>.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "kind",
+    "host_id",
+    "session_id",
+    "cwd",
+    "at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "event_id": {
+      "$ref": "#/$defs/uuid4"
+    },
+    "kind": {
+      "enum": [
+        "ended",
+        "failed",
+        "asked",
+        "blocked"
+      ]
+    },
+    "host_id": {
+      "$ref": "#/$defs/host_id"
+    },
+    "session_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1
+    },
+    "at": {
+      "$ref": "#/$defs/utc_time"
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text",
+        "timeout_s"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid4"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Optional. Consumers treat a missing value as []."
+        },
+        "timeout_s": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "asked"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "question"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "question"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "blocked"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "reason"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "reason"
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "host_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short machine name chosen by the user (bridge.host_id)."
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+      "description": "RFC 9562 UUID. omp session ids are UUID v7 in omp 18.10.4; ids minted by the bridge are UUID v4."
+    },
+    "uuid4": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "utc_time": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$",
+      "description": "UTC ISO 8601 ending in Z."
+    }
+  }
+}

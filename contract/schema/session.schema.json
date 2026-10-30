@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/haesol-shin/omp-hermes-bridge/contract/schema/session.schema.json",
+  "title": "Session registration",
+  "description": "Written by the omp extension to <root>/sessions/<session_id>.json. Main-agent sessions only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "host_id",
+    "session_id",
+    "cwd",
+    "pid",
+    "started_at",
+    "state",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "host_id": {
+      "$ref": "#/$defs/host_id"
+    },
+    "session_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repo": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Git root of cwd, or null."
+    },
+    "title": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "pid": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "started_at": {
+      "$ref": "#/$defs/utc_time"
+    },
+    "state": {
+      "enum": [
+        "idle",
+        "working",
+        "ended"
+      ]
+    },
+    "updated_at": {
+      "$ref": "#/$defs/utc_time"
+    }
+  },
+  "$defs": {
+    "host_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short machine name chosen by the user (bridge.host_id)."
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+      "description": "RFC 9562 UUID. omp session ids are UUID v7 in omp 18.10.4; ids minted by the bridge are UUID v4."
+    },
+    "utc_time": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$",
+      "description": "UTC ISO 8601 ending in Z."
+    }
+  }
+}
