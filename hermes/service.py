@@ -127,12 +127,30 @@ class Bridge:
             found = [s for s in found if s["state"] != "ended"]
         open_questions = self.pending.open(self.clock())
         for session in found:
-            session["pending_questions"] = [
-                q
-                for q in open_questions
-                if (q["host_id"], q["session_id"]) == (session["host_id"], session["session_id"])
-            ]
+            session["pending_questions"] = self._questions_of(session, open_questions)
         return {"sessions": found, "errors": errors}
+
+    @staticmethod
+    def _questions_of(session: dict[str, Any], open_questions: list[dict[str, Any]]) -> list:
+        """Questions from the webhook file plus the one in the session file, which exists even
+        when no webhook is configured. The same question id is listed once."""
+        mine = [
+            q
+            for q in open_questions
+            if (q["host_id"], q["session_id"]) == (session["host_id"], session["session_id"])
+        ]
+        asked = session.get("question")
+        if asked and all(q["reply_to"] != asked["id"] for q in mine):
+            mine.append(
+                {
+                    "reply_to": asked["id"],
+                    "host_id": session["host_id"],
+                    "session_id": session["session_id"],
+                    "text": asked["text"],
+                    "choices": asked["choices"],
+                }
+            )
+        return mine
 
     def _post(
         self, host_id: str, session_id: str, kind: str, text: str, reply_to: str | None
@@ -176,11 +194,13 @@ class Bridge:
         return {**result, "reply_to": reply_to}
 
     def _only_open_question(self, host_id: str, session_id: str) -> str:
-        mine = [
-            q
-            for q in self.pending.open(self.clock())
-            if (q["host_id"], q["session_id"]) == (host_id, session_id)
-        ]
+        sessions = open_queue(self._hosts(host_id)[0]).read_sessions(self.clock())
+        session = next((s for s in sessions if s["session_id"] == session_id), None)
+        mine = (
+            self._questions_of({**session, "host_id": host_id}, self.pending.open(self.clock()))
+            if session
+            else []
+        )
         if len(mine) != 1:
             raise QueueError(
                 f"reply_to is needed: {len(mine)} open questions for that session; "

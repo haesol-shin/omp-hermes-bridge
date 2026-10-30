@@ -66,11 +66,36 @@ An `asked` event is announced in its own one-shot webhook session, but the user 
 
 ## Tools
 
-- `omp_sessions(host_id?, include_ended?)`: reads `sessions/` locally or through `ssh <ssh_target>`. Marks a session `stale` when its `pid` is missing or not running, or `updated_at` is older than 10 minutes. Each session lists its `pending_questions`. Ended sessions are hidden by default. One unreachable host is reported in `errors` and does not hide the others.
+- `omp_sessions(host_id?, include_ended?)`: reads `sessions/` locally or through `ssh <ssh_target>`. Marks a session `stale` when its `pid` is missing or not running, or `updated_at` is older than 10 minutes. Each session lists its `pending_questions`: those that came through the webhook and the open `question` of the session file, which exists without a webhook. Ended sessions are hidden by default. One unreachable host is reported in `errors` and does not hide the others.
 - `omp_send(host_id, session_id, text)`: writes a `prompt` to `inbox/<session_id>/<msg_id>.json`.
 - `omp_answer(host_id, session_id, reply_to?, text)`: writes an `answer`. `reply_to` may be left out when exactly one question of that session is open.
 
 Writes follow the contract: `<msg_id>.json.tmp` in the same directory, then `rename`; directories 0700, files 0600; symbolic links are refused, including the root itself; a missing queue root is never created. Remote writes run a POSIX `sh` script over ssh with the message on stdin. Both tools refuse unknown and ended sessions.
+
+## Waking a Hermes room
+
+`watch.py` blocks until an omp session needs attention, prints a short report and exits. Started from a room with `terminal(background=true, notify_on_complete=true)`, its exit makes Hermes start a new turn in the room that launched it. The completion is an internal event, so a reply of `[SILENT]` stays silent, and a busy room gets the turn after the current one.
+
+```
+terminal(background=true, notify_on_complete=true,
+         command="python <HERMES_HOME>/plugins/omp-bridge/watch.py --host laptop --session <session_id> --since <runs_finished>")
+```
+
+Read `runs_finished` with `omp_sessions` before you act (`omp_send`, `omp_answer`) and pass it as `--since`, so a run that finishes before the watcher's first read still counts. The watcher only reads the session file, locally or through the same ssh path as `omp_sessions`; it never writes.
+
+Stops (exit 0, report on stdout):
+
+- `runs_finished` is greater than the baseline (`--since`, else the value at the first read). An idle session at start therefore means "tell me when the next run finishes".
+- The session is `ended`, is `stale` (same rule as `omp_sessions`), or its file disappeared.
+- A `question` is open whose id is not the `--answered <question_id>` given at start. Pass `--answered` when you re-arm right after `omp_answer`, so the old question that is still in the file does not stop the new watcher.
+
+Other options: `--now` reports the current state at once; `--timeout <s>` (default 82800) ends a forgotten watcher with exit 3 and a line saying nothing happened, so the room can start a new one; `--interval <s>` (default 30, minimum 5). Exit 2 is a usage error or an unknown host or session, exit 1 any other error. A session file without `runs_finished` (older extension) falls back to "idle after working was seen", and the report says short runs can be missed.
+
+The watcher reads the plugin settings from `$HERMES_HOME/config.yaml` (`plugins.entries.omp-bridge.settings`: `hosts`, `ssh_command`) or from the file given with `--config`; a `.yaml` file needs PyYAML, which Hermes ships, and a `.json` file needs nothing.
+
+The report is a hint. After a gateway restart the output and exit code of a recovered watcher are lost, so the room re-reads `omp_sessions` before it acts.
+
+The webhook route is optional for this. A webhook run is a separate one-shot Hermes session with no room context, and its bare `[SILENT]` reply turns into a visible warning (upstream NousResearch/hermes-agent#118270, open). The watcher and the session file need neither the route nor `pending-questions.json`.
 
 ## Limits
 

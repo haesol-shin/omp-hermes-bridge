@@ -391,6 +391,48 @@ def test_answer_without_reply_to_is_refused_when_none_or_several_are_open(asking
     assert not (root / "inbox").exists()
 
 
+def file_question(**change) -> dict:
+    return {
+        "id": QUESTION,
+        "text": "Which fix?",
+        "choices": ["A", "B"],
+        "timeout_s": 600,
+        "asked_at": "2026-10-30T05:04:00Z",
+        **change,
+    }
+
+
+def test_sessions_shows_the_question_from_the_session_file_without_the_webhook(asking):
+    b, root = asking
+    register_session(root, pid=os.getpid(), question=file_question())
+    [session] = sessions(b)
+    [q] = session["pending_questions"]
+    assert (q["reply_to"], q["text"], q["choices"]) == (QUESTION, "Which fix?", ["A", "B"])
+    assert q["session_id"] == SESSION
+    assert b.pending.open(NOW) == []  # nothing came through the webhook
+
+
+def test_the_same_question_from_file_and_webhook_is_listed_once(asking):
+    b, root = asking
+    b.handle_event(example("event-asked.json"))
+    register_session(root, pid=os.getpid(), question={**file_question(), "id": QUESTION})
+    assert len(sessions(b)[0]["pending_questions"]) == 1
+
+
+def test_answer_without_reply_to_finds_the_question_in_the_session_file(asking):
+    b, root = asking
+    register_session(root, pid=os.getpid(), question=file_question())
+    assert b.answer("laptop", SESSION, None, "Use option B.")["reply_to"] == QUESTION
+
+
+def test_a_malformed_question_in_the_session_file_is_ignored(asking):
+    b, root = asking
+    register_session(root, pid=os.getpid(), question={"id": "x", "text": ""}, runs_finished="3")
+    [session] = sessions(b)
+    assert session["pending_questions"] == []
+    assert "question" not in session and "runs_finished" not in session
+
+
 ID_2 = "4f5a6b7c-8d9e-4f0a-9b1c-2d3e4f5a6b7c"
 
 
