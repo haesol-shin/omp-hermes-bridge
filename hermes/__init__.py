@@ -1,4 +1,6 @@
-"""omp-hermes-bridge Hermes plugin: bridge events in, omp_sessions / omp_send / omp_answer out.
+"""omp-hermes-bridge Hermes plugin.
+
+Bridge events in; omp_sessions, omp_send, omp_answer and bridge_watch out.
 
 Uses only the public plugin API: register_tool, register_hook, get_config, inject_message.
 """

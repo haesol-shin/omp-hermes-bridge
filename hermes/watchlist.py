@@ -1,8 +1,9 @@
 """Active watches of Hermes rooms, kept across gateway restarts, and the restart re-arm turn.
 
-A watcher started with `terminal(background=true, notify_on_complete=true)` is lost or loses its
-output when the gateway restarts. The room records each watch here; at plugin load a daemon thread
-asks the gateway to start one turn per record in the room that owns it.
+A watcher started with `terminal(background=true, notify_on_complete=true)` is killed by a normal
+gateway shutdown, and after a crash it loses its output and exit code. The room records each watch
+here; at plugin load a daemon thread asks the gateway to start one turn per record in the room that
+owns it.
 """
 
 from __future__ import annotations

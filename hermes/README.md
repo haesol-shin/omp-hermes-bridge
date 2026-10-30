@@ -99,7 +99,7 @@ The webhook route is optional for this. A webhook run is a separate one-shot Her
 
 ### Surviving a gateway restart
 
-After a restart Hermes recovers a running watcher as detached, but its output and exit code are lost, and a watcher that exited while the gateway was down is not reported. The plugin therefore keeps a watch list.
+A normal gateway shutdown kills every background process, the watcher included. After a crash Hermes recovers a running watcher as detached, but its output and exit code are lost, and a watcher that exited while the gateway was down is not reported. The plugin therefore keeps a watch list.
 
 - `bridge_watch(action="add", session_key, command)` after you start a watcher, `remove(watch_id)` when its final state is handled, `list`. Records live in `watches.json` in `state_dir` (mode 0600, atomic writes): `watch_id`, `session_key`, the exact command line, `started_at`.
 - `session_key` is the documented key of the room you are in: `agent:main:telegram:dm:<chat_id>`, with `:<thread_id>` for a topic, `agent:main:<platform>:group:<chat_id>:<user_id>` for groups. See [Per-Platform Session Tracking](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/sessions.md) and [Injecting Messages](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/plugins.md). The plugin only checks the shape (`agent:<profile>:<platform>:...`); `inject_message` accepts or rejects the key, and the gateway logs an unknown one. Hermes offers no public way for a tool to read its own key, so the room supplies it from the platform, chat and thread it knows.
