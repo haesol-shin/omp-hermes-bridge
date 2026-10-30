@@ -45,7 +45,7 @@ Under `plugins.entries.omp-bridge.settings` in Hermes `config.yaml`:
 `notify` defaults: `asked: notify`, `blocked: notify`, `ended: judge`, `failed: judge`.
 
 - `notify`: the agent is told to relay the event to the user now. `asked` also gives the agent the question id for `omp_answer`.
-- `judge`: the agent decides with its own notification rules whether the user needs to know; it replies exactly `[SILENT]` when not, and the webhook route then delivers nothing.
+- `judge`: the agent decides with its own notification rules whether the user needs to know; it replies exactly `[SILENT]` when not. On the webhook route Hermes turns a bare `[SILENT]` into a visible warning (see "Waking a Hermes room" below).
 - `suppress`: the event is dropped without an agent run.
 
 ## Authentication
