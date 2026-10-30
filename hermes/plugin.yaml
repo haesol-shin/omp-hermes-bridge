@@ -1,0 +1,36 @@
+name: omp-bridge
+version: 0.0.0
+description: Receive omp session events, list sessions, send prompts and answers (omp-hermes-bridge).
+manifest_version: 2
+api_version: 1
+license: MIT
+homepage: https://github.com/haesol-shin/omp-hermes-bridge
+tags: [gateway, omp]
+provides_tools:
+  - omp_sessions
+  - omp_send
+  - omp_answer
+provides_hooks:
+  - pre_gateway_dispatch
+  - pre_llm_call
+config_schema:
+  hosts:
+    type: dict
+    default: {}
+    description: "host_id -> {ssh_target, root}. Empty ssh_target means this machine."
+  routes:
+    type: list
+    default: ["omp-bridge"]
+    description: Webhook route names that carry bridge events.
+  notify:
+    type: dict
+    default: {}
+    description: "Per event kind (ended, failed, asked, blocked): notify, judge or suppress."
+  ssh_command:
+    type: str
+    default: ssh
+    description: ssh executable.
+  state_dir:
+    type: str
+    default: ""
+    description: Directory of the event_id file. Empty means <HERMES_HOME>/plugin-data/omp-bridge.
