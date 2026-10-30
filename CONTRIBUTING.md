@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in omp-hermes-bridge. The project is experimental, so the rules are short.
+Thank you for your interest in omp-hermes-bridge. The rules are short.
 
 ## Before you start
 
@@ -45,11 +45,11 @@ A commit message explains why the code is the way it is. The diff already shows 
 Example:
 
 ```
-fix(gate): block completion when the review is for an old commit
+fix(omp): confirm delivery only from the session record
 
-- A pass on an earlier commit let a changed result complete
-- The gate now compares the reviewed SHA with the current HEAD
-- Rejected: warn only, because the card would already move on
+- A prompt written to the inbox was reported as delivered too early
+- Delivery now counts only when the omp session record stores it
+- Rejected: trusting the inbox move, because a crash can lose it
 ```
 
 ## Pull requests

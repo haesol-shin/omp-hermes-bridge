@@ -8,4 +8,4 @@ Report it privately through GitHub: open the **Security** tab of this repository
 
 ## Supported versions
 
-The project is experimental. Only the latest commit on `main` receives fixes.
+Only the latest commit on `main` receives fixes.

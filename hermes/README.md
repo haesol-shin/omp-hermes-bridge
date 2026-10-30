@@ -6,7 +6,7 @@ Hermes half of omp-hermes-bridge. It turns omp session events into a notificatio
 
 1. Copy this folder to `<HERMES_HOME>/plugins/omp-bridge/` (the folder name is the plugin name).
 2. Enable it: `hermes plugins enable omp-bridge`.
-3. Add a webhook route to `platforms.webhook.extra.routes` (Hermes config). The secret is the omp side's `bridge.webhook_secret`; the route name must be in `routes` below:
+3. Optional, only for the webhook route (`watch.py` and `bridge_watch` do not need it): add a webhook route to `platforms.webhook.extra.routes` (Hermes config). The secret is the omp side's `bridge.webhook_secret`; the route name must be in `routes` below:
 
    ```yaml
    platforms:
