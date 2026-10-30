@@ -40,17 +40,17 @@ One JSON file, mode 0600. Default location: `hermes-bridge.json` in the omp agen
 | --- | --- |
 | `bridge.host_id` | This machine's short name. Required; without it the extension does nothing. |
 | `bridge.root` | Queue root directory. Default: `hermes-bridge/` inside the omp agent directory. A relative path is taken from the agent directory. |
-| `bridge.webhook_url` | Hermes webhook route URL. Required to send events and to use `hermes_ask`. |
-| `bridge.webhook_secret` | HMAC secret of that route. Required to send events and to use `hermes_ask`. |
+| `bridge.webhook_url` | Hermes webhook route URL. Optional. Needed only to send events. |
+| `bridge.webhook_secret` | HMAC secret of that route. Optional. Needed only to send events. |
 
 Send events off the machine only over HTTPS or a trusted network (VPN).
 
 ## What it does
 
-- **Registration.** `sessions/<session_id>.json` is written at session start and on every state change (`idle`, `working`, `ended`), and `updated_at` is refreshed every 5 minutes in every state. Subagents (`ctx.agent.kind === "sub"`) neither register nor emit.
+- **Registration.** `sessions/<session_id>.json` is written at session start and on every state change (`idle`, `working`, `ended`), with `runs_finished` (+1 at every final `agent_end`), `last_run` and the open `question`, and `updated_at` is refreshed every 5 minutes in every state. Subagents (`ctx.agent.kind === "sub"`) neither register nor emit.
 - **Events.** At the end of a turn (`agent_end` without `willContinue`) it sends `ended`, or `failed` when the last assistant message has `stopReason` `error` or `aborted`. Each event is written to `outbox/<event_id>.json`, POSTed with the Generic V2 signature, and removed on HTTP 2xx. Otherwise it is retried with a growing delay (5 s doubling to 15 min), with a fresh timestamp and signature and the same `event_id` and body.
 - **Inbox.** A `prompt` becomes a user message (`attribution: "agent"`) starting with the line `[bridge msg_id=<id>]`: a new turn when the session is idle, a follow-up when it is working. The message counts as delivered only when that line shows up in omp's session file on disk; then `done/<msg_id>.json` is written and the inbox file and `delivering/` marker are removed. After a crash the session file decides whether a message is injected again. Delivery is not completion of the work, and inbox text is never user approval.
-- **`hermes_ask`.** A tool the model can call with `question`, optional `choices` and `timeout_s` (default 1800, 1 to 86400). It sends an `asked` event and waits. An `answer` with the matching `reply_to` becomes the tool result, with the marker line first. After the timeout, on abort, or when the session ends, the question is cancelled and a later answer is written to `done/` with `"dropped": "late"` and is not injected.
+- **`hermes_ask`.** A tool the model can call with `question`, optional `choices` and `timeout_s` (default 1800, 1 to 86400). It writes the open question into the session file (`question`) and waits; it also sends an `asked` event when the webhook is configured, so it works without a webhook. The question is removed from the file when it is answered, times out or is cancelled. An `answer` with the matching `reply_to` becomes the tool result, with the marker line first. After the timeout, on abort, or when the session ends, the question is cancelled and a later answer is written to `done/` with `"dropped": "late"` and is not injected.
 
 ## Limits
 

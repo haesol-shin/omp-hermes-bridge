@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "host_id": "laptop",
+  "session_id": "019a2f00-0000-7000-8000-000000000001",
+  "cwd": "/home/user/dev/example",
+  "repo": "/home/user/dev/example",
+  "title": "Fix login bug",
+  "pid": 42137,
+  "started_at": "2026-10-30T05:00:00Z",
+  "state": "working",
+  "runs_finished": 2,
+  "last_run": {
+    "result": "ended",
+    "at": "2026-10-30T05:02:40Z"
+  },
+  "question": {
+    "id": "3f1c2a4e-8b7d-4c1a-9e2f-0a1b2c3d4e5f",
+    "text": "Which fix?",
+    "choices": ["A", "B"],
+    "timeout_s": 1800,
+    "asked_at": "2026-10-30T05:03:00Z"
+  },
+  "updated_at": "2026-10-30T05:03:12Z"
+}

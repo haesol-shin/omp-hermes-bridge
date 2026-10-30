@@ -60,7 +60,7 @@ describe("examples stay valid for the files this extension writes", () => {
     for (const name of readdirSync(EXAMPLES)) {
       const schema = name.startsWith("event-")
         ? "event"
-        : name === "session.json"
+        : name.startsWith("session")
           ? "session"
           : name.startsWith("done-")
             ? "done-message"

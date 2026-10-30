@@ -47,6 +47,10 @@ Hermes side (plugin config): a map `hosts.<host_id>` → `{ ssh_target, root }`.
 
 - The extension writes it at session start and on every state change.
 - It also refreshes `updated_at` every 5 minutes in every state (idle, working, waiting in `hermes_ask`).
+- Optional `runs_finished`: an integer that starts at 0 and grows by 1 at every final `agent_end` (no `willContinue`), whatever the outcome. A restarted process continues from the value in the existing file. A watcher that remembers the value sees a run that started and finished between two polls.
+- Optional `last_run`: `{result, at}` of the latest final `agent_end`; `result` is `ended` or `failed`, the same split as the event kinds.
+- Optional `question`: `{id, text, choices, timeout_s, asked_at}` while `hermes_ask` waits. It is removed when the question is answered, times out or is cancelled. It is written whether or not a webhook is configured, so Hermes can see an open question without the `asked` event.
+- A reader that does not know these fields ignores them; `schema_version` stays 1.
 - Hermes treats a session as `stale` when its `pid` is not running or `updated_at` is older than 10 minutes.
 
 ## Inbox delivery (Hermes to omp)
@@ -66,7 +70,7 @@ Delivery is not completion of the work. Inbox text is never user approval. The e
 
 ## Questions
 
-- `hermes_ask` sends an `asked` event and waits.
+- `hermes_ask` writes `question` into the session registration and waits. It also sends an `asked` event when the webhook is configured; without a webhook the session file is the only place the question appears.
 - An inbox message with `kind: "answer"` and a `reply_to` that matches the waiting question:
   1. Create `delivering/<msg_id>`.
   2. Return the text as the `hermes_ask` tool result, with `[bridge msg_id=<msg_id>]` as its first line. Do not queue it as a follow-up.

@@ -1,6 +1,8 @@
-"""omp-hermes-bridge Hermes plugin: bridge events in, omp_sessions / omp_send / omp_answer out.
+"""omp-hermes-bridge Hermes plugin.
 
-Uses only the public plugin API: register_tool, register_hook, get_config.
+Bridge events in; omp_sessions, omp_send, omp_answer and bridge_watch out.
+
+Uses only the public plugin API: register_tool, register_hook, get_config, inject_message.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ from typing import Any
 
 from .service import Bridge, ConfigError, Settings
 from .spool import QueueError
+from .watchlist import WatchList, start_rearm_thread
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +70,27 @@ SCHEMAS = {
             "required": ["host_id", "session_id", "text"],
         },
     },
+    "bridge_watch": {
+        "name": "bridge_watch",
+        "description": (
+            "Record the background watchers of this room so a gateway restart can re-arm them. "
+            "add: after you start a watcher (taskwatch watch or omp-bridge watch.py) give your "
+            "session_key (agent:<profile>:<platform>:<chat type>:<chat id>[:<thread id>], the "
+            "documented key of the chat you are in) and the exact command line; returns "
+            "watch_id. remove: when the watch ended and its final state is handled. list: all "
+            "records."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {"enum": ["add", "remove", "list"]},
+                "session_key": {"type": "string", "description": "add: this room's session key"},
+                "command": {"type": "string", "description": "add: exact watcher command line"},
+                "watch_id": {"type": "string", "description": "remove: id returned by add"},
+            },
+            "required": ["action"],
+        },
+    },
 }
 
 
@@ -82,6 +106,17 @@ def _tool(call):
             return json.dumps({"error": f"missing argument {exc.args[0]}"})
 
     return handler
+
+
+def bridge_watch(watches: WatchList, p: dict[str, Any]) -> dict[str, Any]:
+    action = p.get("action")
+    if action == "add":
+        return {"watch_id": watches.add(p.get("session_key"), p.get("command"))}
+    if action == "remove":
+        return {"removed": watches.remove(str(p.get("watch_id") or ""))}
+    if action == "list":
+        return {"watches": watches.list()}
+    raise QueueError("action must be add, remove or list")
 
 
 def make_gateway_hook(bridge: Bridge):
@@ -136,7 +171,11 @@ def register(ctx) -> None:
             lambda p: bridge.answer(p["host_id"], p["session_id"], p.get("reply_to"), p["text"])
         ),
     }
+    watches = WatchList(settings.state_dir / "watches.json")
+    tools["bridge_watch"] = _tool(lambda p: bridge_watch(watches, p))
     for name, handler in tools.items():
         ctx.register_tool(name=name, toolset="omp_bridge", schema=SCHEMAS[name], handler=handler)
     ctx.register_hook("pre_gateway_dispatch", make_gateway_hook(bridge))
     ctx.register_hook("pre_llm_call", make_context_hook(bridge))
+    allowed = ctx.get_config("allow_gateway_injection", default=None) is True
+    start_rearm_thread(watches, ctx, allowed)

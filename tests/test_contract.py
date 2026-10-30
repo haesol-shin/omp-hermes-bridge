@@ -9,6 +9,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 CONTRACT = Path(__file__).resolve().parent.parent / "contract"
 SCHEMA_OF = {
     "session.json": "session",
+    "session-asking.json": "session",
     "inbox-prompt.json": "inbox-message",
     "inbox-answer.json": "inbox-message",
     "done-delivered.json": "done-message",
@@ -52,7 +53,21 @@ def test_example_is_valid(path):
     assert errors == []
 
 
+def session(**extra):
+    base = json.loads((CONTRACT / "examples" / "session.json").read_text(encoding="utf-8"))
+    return {**base, **extra}
+
+
+QUESTION = {"id": ID4, "text": "Which fix?", "choices": [], "timeout_s": 60, "asked_at": AT}
+
 BAD = [
+    ("session", session(runs_finished=-1)),
+    ("session", session(runs_finished="2")),
+    ("session", session(last_run={"result": "blocked", "at": AT})),
+    ("session", session(last_run={"result": "ended"})),
+    ("session", session(question={**QUESTION, "id": SESSION})),
+    ("session", session(question={k: v for k, v in QUESTION.items() if k != "asked_at"})),
+    ("session", session(question={**QUESTION, "text": ""})),
     ("event", event(reason="x")),
     ("event", event(kind="asked")),
     ("event", event(session_id="../../outside")),

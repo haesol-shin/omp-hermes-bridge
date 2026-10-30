@@ -54,7 +54,43 @@ def check_session(raw: Any, host: Host) -> dict[str, Any] | None:
     )
     if not ok:
         return None
-    return {**raw, "host_id": host.host_id}
+    return {**_drop_bad_optional(raw), "host_id": host.host_id}
+
+
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _good_question(question: Any) -> bool:
+    return (
+        isinstance(question, dict)
+        and is_uuid4(question.get("id"))
+        and isinstance(question.get("text"), str)
+        and question["text"] != ""
+        and isinstance(question.get("choices"), list)
+        and all(isinstance(c, str) and c for c in question["choices"])
+        and _is_int(question.get("timeout_s"))
+        and is_utc_time(question.get("asked_at"))
+    )
+
+
+def _good_last_run(last_run: Any) -> bool:
+    return (
+        isinstance(last_run, dict)
+        and last_run.get("result") in ("ended", "failed")
+        and is_utc_time(last_run.get("at"))
+    )
+
+
+def _drop_bad_optional(raw: dict[str, Any]) -> dict[str, Any]:
+    """Optional fields written by newer extensions. A malformed one is treated as absent, so a
+    broken registration can neither stop a watcher nor put junk in front of the model."""
+    checks = {
+        "runs_finished": lambda v: _is_int(v) and v >= 0,
+        "last_run": _good_last_run,
+        "question": _good_question,
+    }
+    return {k: v for k, v in raw.items() if k not in checks or checks[k](v)}
 
 
 def mark_stale(session: dict[str, Any], alive: bool | None, now: float) -> dict[str, Any]:

@@ -224,6 +224,56 @@ describe("events", () => {
   });
 });
 
+describe("run counter in the session file", () => {
+  test("every final agent_end adds 1, whatever the outcome; willContinue does not", async () => {
+    const r = rig();
+    r.bridge.attach(r.host, r.info);
+    expect(readJson(sessionFile(r)).runs_finished).toBe(0);
+    expect(readJson(sessionFile(r)).last_run).toBeUndefined();
+    r.bridge.onAgentStart();
+    await r.bridge.onAgentEnd([assistant("toolUse")], true);
+    expect(readJson(sessionFile(r))).toMatchObject({ state: "working", runs_finished: 0 });
+    await r.bridge.onAgentEnd([assistant("stop")], false);
+    expect(readJson(sessionFile(r))).toMatchObject({ state: "idle", runs_finished: 1, last_run: { result: "ended" } });
+    r.clock.t += 1_000;
+    r.bridge.onAgentStart();
+    await r.bridge.onAgentEnd([assistant("error", { errorMessage: "boom" })], false);
+    expect(readJson(sessionFile(r))).toMatchObject({
+      runs_finished: 2,
+      last_run: { result: "failed", at: "2026-10-30T05:00:01Z" },
+    });
+    expect(queueProblems(r.root)).toEqual([]);
+  });
+
+  test("a run that starts and ends within one tick still shows in a single write", async () => {
+    const r = rig();
+    r.bridge.attach(r.host, r.info);
+    r.bridge.onAgentStart();
+    await r.bridge.onAgentEnd([assistant("stop")], false);
+    expect(readJson(sessionFile(r))).toMatchObject({ state: "idle", runs_finished: 1 });
+  });
+
+  test("a restarted process continues from the count in the file", async () => {
+    const r = rig();
+    r.bridge.attach(r.host, r.info);
+    await r.bridge.onAgentEnd([assistant("stop")], false);
+    await r.bridge.onAgentEnd([assistant("stop")], false);
+    const next = r.make();
+    next.bridge.attach(next.host, r.info);
+    expect(readJson(sessionFile(r))).toMatchObject({ runs_finished: 2, last_run: { result: "ended" } });
+    await next.bridge.onAgentEnd([assistant("stop")], false);
+    expect(readJson(sessionFile(r)).runs_finished).toBe(3);
+  });
+
+  test("a damaged earlier file starts the count at 0", () => {
+    const r = rig();
+    mkdirSync(join(r.root, "sessions"), { recursive: true, mode: 0o700 });
+    writeFileSync(sessionFile(r), "{not json", { mode: 0o600 });
+    r.bridge.attach(r.host, r.info);
+    expect(readJson(sessionFile(r)).runs_finished).toBe(0);
+  });
+});
+
 describe("inbox prompts", () => {
   test("idle session: marker first line, agent attribution, no followUp; done only after the file shows it", async () => {
     const r = rig();
@@ -544,13 +594,73 @@ describe("hermes_ask", () => {
     expect(next.host.sent).toHaveLength(0);
   });
 
-  test("unavailable without a webhook or without a question", async () => {
-    const r = rig({ webhookUrl: undefined });
+  test("unavailable without a configured bridge or without a question", async () => {
+    const r = rig();
+    r.cfg.value = { problem: "no config" };
     r.bridge.attach(r.host, r.info);
     expect((await askNow(r)).details).toMatchObject({ status: "unavailable" });
     const ok = rig();
     ok.bridge.attach(ok.host, ok.info);
     expect((await ok.bridge.ask({ question: "  " }, undefined)).details).toMatchObject({ status: "unavailable" });
+  });
+
+  const openQuestion = (r: ReturnType<typeof rig>) => readJson(sessionFile(r)).question;
+
+  test("the open question is in the session file and removed when answered", async () => {
+    const r = rig();
+    r.bridge.attach(r.host, r.info);
+    const pending = askNow(r);
+    await Bun.sleep(5);
+    const q = openQuestion(r);
+    expect(q).toMatchObject({ text: "Which fix?", choices: ["A", "B"], timeout_s: 600, asked_at: "2026-10-30T05:00:00Z" });
+    expect(queueProblems(r.root)).toEqual([]);
+    writeInbox(r.root, SESSION_ID, answer(q.id));
+    await r.bridge.tick();
+    await pending;
+    expect(readJson(sessionFile(r)).question).toBeUndefined();
+  });
+
+  test("the open question is removed on timeout, abort and session end", async () => {
+    const r = rig();
+    r.bridge.attach(r.host, r.info);
+    const timedOut = askNow(r);
+    await Bun.sleep(5);
+    expect(openQuestion(r)).toBeDefined();
+    r.host.timeouts.at(-1)?.fn();
+    await timedOut;
+    expect(readJson(sessionFile(r)).question).toBeUndefined();
+
+    const controller = new AbortController();
+    const aborted = askNow(r, {}, controller.signal);
+    await Bun.sleep(5);
+    expect(openQuestion(r)).toBeDefined();
+    controller.abort();
+    await aborted;
+    expect(readJson(sessionFile(r)).question).toBeUndefined();
+
+    const last = askNow(r);
+    await Bun.sleep(5);
+    expect(openQuestion(r)).toBeDefined();
+    await r.bridge.shutdown();
+    await last;
+    expect(readJson(sessionFile(r))).toMatchObject({ state: "ended" });
+    expect(readJson(sessionFile(r)).question).toBeUndefined();
+  });
+
+  test("without a webhook the question lives only in the session file and the answer still arrives", async () => {
+    const r = rig({ webhookUrl: undefined, webhookSecret: undefined });
+    r.bridge.attach(r.host, r.info);
+    const pending = askNow(r);
+    await Bun.sleep(5);
+    const q = openQuestion(r);
+    expect(q.text).toBe("Which fix?");
+    writeInbox(r.root, SESSION_ID, answer(q.id));
+    await r.bridge.tick();
+    const result = await pending;
+    expect(result.details).toMatchObject({ status: "answered", question_id: q.id });
+    expect(r.net.calls).toHaveLength(0);
+    expect(readdirSync(join(r.root, "outbox"))).toEqual([]);
+    expect(queueProblems(r.root)).toEqual([]);
   });
 
   test("timeout_s is clamped to 1..86400 and choices are optional", async () => {

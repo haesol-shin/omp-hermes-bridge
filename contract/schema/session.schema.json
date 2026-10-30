@@ -56,6 +56,66 @@
         "ended"
       ]
     },
+    "runs_finished": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Optional. Starts at 0 and grows by 1 at every final agent_end, whatever the outcome. A watcher compares it with its baseline to see a run that started and finished between two polls."
+    },
+    "last_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "result",
+        "at"
+      ],
+      "properties": {
+        "result": {
+          "enum": [
+            "ended",
+            "failed"
+          ]
+        },
+        "at": {
+          "$ref": "#/$defs/utc_time"
+        }
+      },
+      "description": "Optional. Outcome of the latest final agent_end, same meaning as the ended and failed event kinds."
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text",
+        "choices",
+        "timeout_s",
+        "asked_at"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid4"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "timeout_s": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "asked_at": {
+          "$ref": "#/$defs/utc_time"
+        }
+      },
+      "description": "Optional. The open hermes_ask question. Present only while it waits; removed when it is answered, times out or is cancelled."
+    },
     "updated_at": {
       "$ref": "#/$defs/utc_time"
     }
@@ -76,6 +136,10 @@
       "format": "date-time",
       "pattern": "Z$",
       "description": "UTC ISO 8601 ending in Z."
+    },
+    "uuid4": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
     }
   }
 }

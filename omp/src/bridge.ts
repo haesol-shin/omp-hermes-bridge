@@ -61,6 +61,20 @@ interface Waiting {
   settle(outcome: AskOutcome): void;
 }
 
+/** The open `hermes_ask` question as it appears in the session file. */
+interface OpenQuestion {
+  id: string;
+  text: string;
+  choices: string[];
+  timeout_s: number;
+  asked_at: string;
+}
+
+interface LastRun {
+  result: "ended" | "failed";
+  at: string;
+}
+
 export interface AskParams {
   question: string;
   choices?: string[];
@@ -87,6 +101,9 @@ export class Bridge {
   #pending = new Map<string, Pending>();
   #waiting = new Map<string, Waiting>();
   #bad = new Map<string, number>();
+  #runsFinished = 0;
+  #lastRun: LastRun | undefined;
+  #questions = new Map<string, OpenQuestion>();
   #repo: { cwd: string; root: string | null } | undefined;
   #ctx: (Ctx & { root: string }) | undefined;
   #now: () => number;
@@ -153,7 +170,9 @@ export class Bridge {
     this.#scanner = new MarkerScanner();
     this.#pending.clear();
     this.#bad.clear();
+    this.#questions.clear();
     this.#prepare();
+    this.#resumeCounters();
     this.#register();
     this.#timer ??= host.setInterval(() => void this.tick(), TICK_MS);
     void this.tick();
@@ -169,6 +188,29 @@ export class Bridge {
       c.queue.ensureDir(c.queue.doneDir(this.#info.id));
     } catch (error) {
       this.#log(`queue not usable: ${errText(error)}`);
+    }
+  }
+
+  /**
+   * A restarted omp process may re-attach to a session whose file already counts runs. Counting from
+   * 0 again would move the value backwards, and a watcher waiting for it to grow would never fire.
+   */
+  #resumeCounters(): void {
+    this.#runsFinished = 0;
+    this.#lastRun = undefined;
+    const c = this.#context();
+    if (!c || !this.#info) return;
+    try {
+      const raw = JSON.parse(c.queue.readText(c.queue.sessionFile(this.#info.id)) ?? "null");
+      if (Number.isSafeInteger(raw?.runs_finished) && raw.runs_finished >= 0) {
+        this.#runsFinished = raw.runs_finished;
+        const last = raw.last_run;
+        if ((last?.result === "ended" || last?.result === "failed") && typeof last.at === "string") {
+          this.#lastRun = { result: last.result, at: last.at };
+        }
+      }
+    } catch {
+      // No file or a damaged one: start from 0.
     }
   }
 
@@ -203,8 +245,12 @@ export class Bridge {
     if (!this.#info) return;
     this.#checkDelivered();
     if (willContinue) return;
-    this.#setState("idle");
     const outcome = classify(messages ?? []);
+    // Counter and state go out in one write: a watcher that sees `idle` must also see the new count.
+    this.#runsFinished += 1;
+    this.#lastRun = { result: outcome.kind, at: this.#iso() };
+    this.#state = "idle";
+    this.#register();
     const sent = this.#emit(
       outcome.kind,
       outcome.summary === undefined ? {} : { summary: outcome.summary },
@@ -236,6 +282,9 @@ export class Bridge {
         pid: this.opts.pid ?? process.pid,
         started_at: this.#startedAt,
         state: this.#state,
+        runs_finished: this.#runsFinished,
+        ...(this.#lastRun ? { last_run: this.#lastRun } : {}),
+        ...this.#questionField(),
         updated_at: this.#iso(),
       });
       this.#registered = true;
@@ -243,6 +292,11 @@ export class Bridge {
     } catch (error) {
       this.#log(`session registration failed: ${errText(error)}`);
     }
+  }
+
+  #questionField(): { question?: OpenQuestion } {
+    const first = this.#questions.values().next();
+    return first.done ? {} : { question: first.value };
   }
 
   #gitRoot(cwd: string): string | null {
@@ -290,8 +344,9 @@ export class Bridge {
     const c = this.#context();
     const host = this.#host;
     const question = params.question?.trim() ?? "";
-    if (!c || !host || !this.#info || !c.outbox.canSend()) {
-      return unavailable("Hermes is not configured for this session (bridge.host_id, bridge.webhook_url, bridge.webhook_secret).");
+    // The webhook is optional: the question is always in the session file, the event only when it is configured.
+    if (!c || !host || !this.#info) {
+      return unavailable("The Hermes bridge is not configured for this session (bridge.host_id).");
     }
     if (question === "") return unavailable("The question is empty.");
     const timeoutS = Math.min(Math.max(Math.trunc(params.timeoutS ?? DEFAULT_ASK_TIMEOUT_S), 1), MAX_ASK_TIMEOUT_S);
@@ -306,9 +361,12 @@ export class Bridge {
     const once = (value: AskOutcome) => {
       if (done) return;
       done = true;
+      this.#closeQuestion(id);
       settle(value);
     };
     this.#waiting.set(id, { settle: once });
+    this.#questions.set(id, { id, text: question, choices, timeout_s: timeoutS, asked_at: this.#iso() });
+    this.#register();
     const timer = host.setTimeout(() => once({ status: "timeout" }), timeoutS * 1000);
     const onAbort = () => once({ status: "cancelled" });
     if (signal?.aborted) onAbort();
@@ -331,6 +389,11 @@ export class Bridge {
         ? `No answer from Hermes within ${timeoutS} seconds. The question is cancelled; a later answer is dropped.`
         : "The question was cancelled before an answer arrived. A later answer is dropped.";
     return { content: [{ type: "text", text }], details: { status: result.status, question_id: id } };
+  }
+
+  /** Drops the question from the session file as soon as it is settled, not when the tool call returns. */
+  #closeQuestion(id: string): void {
+    if (this.#questions.delete(id)) this.#register();
   }
 
   // ---- timer work --------------------------------------------------------
