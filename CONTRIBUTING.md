@@ -23,7 +23,7 @@ CI runs the same commands. A pull request must pass all of them.
 
 ## Code style
 
-- Contract first. `contract/` is the only source of the wire format. Change it in its own pull request before code that depends on it.
+- Contract first. `contract/` is the only source of the wire format. Put a contract change in its own commit before the code that depends on it, and name it in the pull request body.
 - The omp extension (`omp/`) uses only the public omp extension API. The Hermes side (`hermes/`) uses only the public Hermes plugin API.
 - The omp extension must keep working when Hermes is absent.
 - Keep changes minimal and focused. One function does one thing.

@@ -16,7 +16,7 @@ Run all of them before you report a change as done.
 ## Rules
 
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) first. It is the source for code style, commits, and pull requests.
-- `contract/` is the wire format. Do not change it in a code pull request. If code needs a contract change, stop and report it.
+- `contract/` is the wire format. If code needs a contract change, stop and report it. Do not change the contract on your own.
 - `omp/` uses only the public omp extension API. `hermes/` uses only the public Hermes plugin API. Do not import either harness's internals.
 - The omp extension must never break or block an omp session. No handler may throw.
 - Keep the change minimal. Do not refactor unrelated code.
