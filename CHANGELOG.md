@@ -6,6 +6,7 @@ All notable changes to omp-hermes-bridge are documented here. The format is base
 
 ### Changed
 - Rewrite the top README for the current state and drop the experimental status note.
+- After a gateway restart the Hermes plugin sends one re-arm turn per room that lists all its watches, not one turn per watch; a turn lists at most 50.
 
 ### Added
 - Project skeleton: documentation, CI, and issue and pull request templates.
