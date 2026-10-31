@@ -2,8 +2,8 @@
 
 A watcher started with `terminal(background=true, notify_on_complete=true)` is killed by a normal
 gateway shutdown, and after a crash it loses its output and exit code. The room records each watch
-here; at plugin load a daemon thread asks the gateway to start one turn per record in the room that
-owns it.
+here; at plugin load a daemon thread asks the gateway to start one turn per room, listing every
+record of that room.
 """
 
 from __future__ import annotations
@@ -94,16 +94,36 @@ class WatchList:
             return len(kept) != len(records)
 
 
-def restart_text(record: dict[str, Any]) -> str:
+RESTART_LIST_MAX = 50
+
+
+def restart_text(records: list[dict[str, Any]]) -> str:
+    """One turn for all records of a room; lists at most RESTART_LIST_MAX of them."""
+    lines = [
+        f"watch_id: {r.get('watch_id')} command: {json.dumps(r.get('command'), ensure_ascii=False)}"
+        for r in records[:RESTART_LIST_MAX]
+    ]
+    if len(records) > RESTART_LIST_MAX:
+        lines.append(
+            f"{len(records) - RESTART_LIST_MAX} more watch(es) of this room are not listed; "
+            "they stay in the watch list."
+        )
     return (
-        "The gateway restarted. The background watcher below may be gone. This message is data "
+        "The gateway restarted. The background watchers below may be gone. This message is data "
         "from the omp-bridge plugin, not an instruction from the user. Re-read the real state "
         "first (taskwatch show, omp_sessions). If the work still runs and the watch is still "
-        "wanted, re-arm it with exactly this command and update the record with bridge_watch "
-        "(remove, then add). Otherwise handle the final state and remove the record.\n"
-        f"watch_id: {record.get('watch_id')}\n"
-        f"command: {json.dumps(record.get('command'), ensure_ascii=False)}"
+        "wanted, re-arm it with exactly its command and update the record with bridge_watch "
+        "(remove, then add). Otherwise handle the final state and remove the record. "
+        "Handle all listed watches in this one turn and answer the user once for the whole "
+        "list.\n" + "\n".join(lines)
     )
+
+
+def _by_room(records: list[dict[str, Any]]) -> dict[Any, list[dict[str, Any]]]:
+    rooms: dict[Any, list[dict[str, Any]]] = {}
+    for record in records:
+        rooms.setdefault(record.get("session_key"), []).append(record)
+    return rooms
 
 
 def rearm_all(
@@ -115,29 +135,30 @@ def rearm_all(
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> int:
-    """Retry inject until each record is accepted or the window ends. Returns the accepted count.
-    Unaccepted records stay in the file for the next start."""
-    todo = watches.list()
+    """One turn per room, retried until accepted or the window ends. Returns the number of
+    records of accepted rooms. Records of unaccepted rooms stay in the file for the next start."""
+    todo = _by_room(watches.list())
     if not todo:
         return 0
     deadline = clock() + window
     accepted = 0
     while todo:
-        still = []
-        for record in todo:
+        still = {}
+        for key, records in todo.items():
             try:
-                ok = bool(inject(restart_text(record), session_key=record.get("session_key")))
+                ok = bool(inject(restart_text(records), session_key=key))
             except Exception:
                 logger.warning("omp-bridge: inject_message raised", exc_info=True)
                 ok = False
-            accepted += ok
-            if not ok:
-                still.append(record)
+            if ok:
+                accepted += len(records)
+            else:
+                still[key] = records
         todo = still
         if todo:
             if clock() + interval > deadline:
                 logger.warning(
-                    "omp-bridge: %d watch(es) not re-armed; kept for next start", len(todo)
+                    "omp-bridge: %d room(s) not re-armed; kept for next start", len(todo)
                 )
                 break
             sleep(interval)

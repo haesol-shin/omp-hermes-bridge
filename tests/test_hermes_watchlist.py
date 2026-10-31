@@ -121,6 +121,63 @@ def test_each_record_goes_to_its_own_room(tmp_path):
     assert sorted(k for _, k in inject.calls) == sorted([KEY, "agent:main:discord:dm:5"])
 
 
+def test_records_of_one_room_share_one_turn(tmp_path):
+    wl = watchlist.WatchList(tmp_path / "w.json")
+    other = "agent:main:discord:dm:5"
+    wl.add(KEY, "cmd-a")
+    wl.add(other, "cmd-c")
+    wl.add(KEY, "cmd-b")
+    inject = Inject()
+    assert watchlist.rearm_all(wl, inject) == 3
+    texts = dict((k, t) for t, k in inject.calls)
+    assert len(inject.calls) == 2
+    assert "cmd-a" in texts[KEY] and "cmd-b" in texts[KEY] and "cmd-c" not in texts[KEY]
+    assert "cmd-c" in texts[other] and "cmd-a" not in texts[other]
+    assert "once for the whole list" in texts[KEY]
+
+
+def test_retry_is_per_room_and_return_counts_accepted_records(tmp_path):
+    wl = watchlist.WatchList(tmp_path / "w.json")
+    other = "agent:main:discord:dm:5"
+    wl.add(KEY, "cmd-a")
+    wl.add(KEY, "cmd-b")
+    wl.add(other, "cmd-c")
+    calls = []
+
+    def inject(text, session_key=None):
+        calls.append(session_key)
+        return session_key == other or calls.count(KEY) > 2
+
+    clock, sleep = clockwork()
+    assert watchlist.rearm_all(wl, inject, clock=clock, sleep=sleep) == 3
+    assert calls.count(KEY) == 3 and calls.count(other) == 1
+
+
+def test_refused_room_does_not_count(tmp_path):
+    wl = watchlist.WatchList(tmp_path / "w.json")
+    other = "agent:main:discord:dm:5"
+    wl.add(KEY, "cmd-a")
+    wl.add(KEY, "cmd-b")
+    wl.add(other, "cmd-c")
+    clock, sleep = clockwork()
+    inject = lambda text, session_key=None: session_key == other  # noqa: E731
+    assert watchlist.rearm_all(wl, inject, clock=clock, sleep=sleep) == 1
+
+
+def test_a_room_over_the_cap_lists_fifty_and_counts_the_rest(tmp_path):
+    wl = watchlist.WatchList(tmp_path / "w.json")
+    for i in range(53):
+        wl.add(KEY, f"cmd-{i:02d}")
+    inject = Inject()
+    assert watchlist.rearm_all(wl, inject) == 53
+    assert len(inject.calls) == 1
+    text = inject.calls[0][0]
+    assert text.count("command:") == 50
+    assert '"cmd-49"' in text and '"cmd-50"' not in text
+    assert "3 more watch(es)" in text
+    assert len(wl.list()) == 53
+
+
 class Ctx(FakeCtx):
     def __init__(self, config):
         super().__init__(config)
