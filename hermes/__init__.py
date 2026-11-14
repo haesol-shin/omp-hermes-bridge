@@ -13,7 +13,7 @@ from typing import Any
 
 from .service import Bridge, ConfigError, Settings
 from .spool import QueueError
-from .watchlist import WatchList, start_rearm_thread
+from .watchlist import WatchList, make_terminal_hook, start_rearm_thread
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +74,14 @@ SCHEMAS = {
         "name": "bridge_watch",
         "description": (
             "Record the background watchers of this room so a gateway restart can re-arm them. "
-            "add: after you start a watcher (taskwatch watch or omp-bridge watch.py) give your "
-            "session_key (agent:<profile>:<platform>:<chat type>:<chat id>[:<thread id>], the "
-            "documented key of the chat you are in) and the exact command line; returns "
-            "watch_id. remove: when the watch ended and its final state is handled. list: all "
-            "records."
+            "add: after you start a watcher (taskwatch needs --wait or omp-bridge watch.py) "
+            "give your session_key (agent:<profile>:<platform>:<chat type>:<chat id>[:<thread "
+            "id>], the documented key of the chat you are in) and the exact command line; "
+            "returns watch_id. Set chain=true for a taskwatch needs --wait --from command: "
+            "when it ends cleanly the plugin moves the record to the next cursor and the "
+            "completion carries the exact command to start, so do not add a record for that "
+            "next command. remove: when the watch ended and its final state is handled. list: "
+            "all records."
         ),
         "parameters": {
             "type": "object",
@@ -86,6 +89,12 @@ SCHEMAS = {
                 "action": {"enum": ["add", "remove", "list"]},
                 "session_key": {"type": "string", "description": "add: this room's session key"},
                 "command": {"type": "string", "description": "add: exact watcher command line"},
+                "chain": {
+                    "type": "boolean",
+                    "description": (
+                        "add: follow a taskwatch needs --wait command to its next cursor"
+                    ),
+                },
                 "watch_id": {"type": "string", "description": "remove: id returned by add"},
             },
             "required": ["action"],
@@ -97,9 +106,9 @@ SCHEMAS = {
 def _tool(call):
     """Tool handlers return JSON text; queue problems become an error result, not a crash."""
 
-    def handler(params: dict[str, Any] | None = None, **_kwargs: Any) -> str:
+    def handler(params: dict[str, Any] | None = None, **kwargs: Any) -> str:
         try:
-            return json.dumps(call(params or {}), ensure_ascii=False)
+            return json.dumps(call(params or {}, **kwargs), ensure_ascii=False)
         except QueueError as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
         except KeyError as exc:
@@ -108,10 +117,17 @@ def _tool(call):
     return handler
 
 
-def bridge_watch(watches: WatchList, p: dict[str, Any]) -> dict[str, Any]:
+def bridge_watch(watches: WatchList, p: dict[str, Any], task_id: str = "") -> dict[str, Any]:
     action = p.get("action")
     if action == "add":
-        return {"watch_id": watches.add(p.get("session_key"), p.get("command"))}
+        return {
+            "watch_id": watches.add(
+                p.get("session_key"),
+                p.get("command"),
+                chain=p.get("chain") is True,
+                task_id=task_id,
+            )
+        }
     if action == "remove":
         return {"removed": watches.remove(str(p.get("watch_id") or ""))}
     if action == "list":
@@ -164,18 +180,23 @@ def register(ctx) -> None:
     bridge = Bridge(settings)
     tools = {
         "omp_sessions": _tool(
-            lambda p: bridge.sessions(p.get("host_id"), bool(p.get("include_ended")))
+            lambda p, **_: bridge.sessions(p.get("host_id"), bool(p.get("include_ended")))
         ),
-        "omp_send": _tool(lambda p: bridge.send(p["host_id"], p["session_id"], p["text"])),
+        "omp_send": _tool(lambda p, **_: bridge.send(p["host_id"], p["session_id"], p["text"])),
         "omp_answer": _tool(
-            lambda p: bridge.answer(p["host_id"], p["session_id"], p.get("reply_to"), p["text"])
+            lambda p, **_: bridge.answer(
+                p["host_id"], p["session_id"], p.get("reply_to"), p["text"]
+            )
         ),
     }
     watches = WatchList(settings.state_dir / "watches.json")
-    tools["bridge_watch"] = _tool(lambda p: bridge_watch(watches, p))
+    tools["bridge_watch"] = _tool(
+        lambda p, **kw: bridge_watch(watches, p, str(kw.get("task_id") or ""))
+    )
     for name, handler in tools.items():
         ctx.register_tool(name=name, toolset="omp_bridge", schema=SCHEMAS[name], handler=handler)
     ctx.register_hook("pre_gateway_dispatch", make_gateway_hook(bridge))
     ctx.register_hook("pre_llm_call", make_context_hook(bridge))
+    ctx.register_hook("transform_terminal_output", make_terminal_hook(watches))
     allowed = ctx.get_config("allow_gateway_injection", default=None) is True
     start_rearm_thread(watches, ctx, allowed)

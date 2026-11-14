@@ -101,11 +101,29 @@ The webhook route is optional for this. A webhook run is a separate one-shot Her
 
 A normal gateway shutdown kills every background process, the watcher included. After a crash Hermes recovers a running watcher as detached, but its output and exit code are lost, and a watcher that exited while the gateway was down is not reported. The plugin therefore keeps a watch list.
 
-- `bridge_watch(action="add", session_key, command)` after you start a watcher, `remove(watch_id)` when its final state is handled, `list`. Records live in `watches.json` in `state_dir` (mode 0600, atomic writes): `watch_id`, `session_key`, the exact command line, `started_at`.
+- `bridge_watch(action="add", session_key, command, chain?)` after you start a watcher, `remove(watch_id)` when its final state is handled, `list`. Records live in `watches.json` in `state_dir` (mode 0600, atomic writes): `watch_id`, `session_key`, the exact command line, `started_at`, and for a chained record `chain: true` and the `task_id` of the turn that added it.
 - `session_key` is the documented key of the room you are in: `agent:main:telegram:dm:<chat_id>`, with `:<thread_id>` for a topic, `agent:main:<platform>:group:<chat_id>:<user_id>` for groups. See [Per-Platform Session Tracking](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/sessions.md) and [Injecting Messages](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/plugins.md). The plugin only checks the shape (`agent:<profile>:<platform>:...`); `inject_message` accepts or rejects the key, and the gateway logs an unknown one. Hermes offers no public way for a tool to read its own key, so the room supplies it from the platform, chat and thread it knows.
-- At plugin load a daemon thread calls `inject_message(text, session_key=...)` once per room every 5 seconds until it returns `True` or 10 minutes pass (then that room's records stay for the next start). One turn lists every record of the room (`watch_id` and `command`; at most 50, the number left out is stated and those records stay in the file). The text says the gateway restarted, the watchers may be gone, to re-read the state, re-arm with the exact command if the work still runs, and to answer the user once for the whole list; it is data, not a user instruction.
+- At plugin load a daemon thread calls `inject_message(text, session_key=...)` once per room every 5 seconds until it returns `True` or 10 minutes pass (then that room's records stay for the next start). One turn lists every record of the room (`watch_id`, `command`, and `chain: true` where it applies; at most 50, the number left out is stated and those records stay in the file). The text says the gateway restarted, the watchers may be gone, to re-read the state, re-arm with the exact command if the work still runs and pass `chain: true` when the record shows it, and to answer the user once for the whole list; it is data, not a user instruction.
 - The owner must allow it: set `allow_gateway_injection: true` under `plugins.entries.omp-bridge.settings` (checked by this plugin) and `plugins.entries.omp-bridge.allow_gateway_injection: true` (checked by Hermes). Without the first, the plugin logs one warning and does nothing.
 - Limit: `inject_message` has no public way to tell a gateway from a CLI. In a CLI session with leftover records the text would go to that CLI; the records come from rooms, so keep them only where a gateway runs.
+
+### Chaining the next watch
+
+A `taskwatch needs --wait --from <cursor>` watcher ends after one event and prints a new `cursor:` line, and its next command is the same argv with that cursor. Record such a watcher with `chain: true`:
+
+```
+terminal(background=true, notify_on_complete=true,
+         command="taskwatch --root <root> needs --wait --from <cursor>")
+bridge_watch(action="add", session_key="agent:...", command="taskwatch --root <root> needs --wait --from <cursor>", chain=true)
+```
+
+When the command exits with code 0 and its output carries a `cursor: <value>` line, the plugin replaces the command in that record with the same argv and the new cursor, then the completion ends with the exact next command and the `watch_id`. The hook picks the record by the run id that `bridge_watch add` takes from its own tool call, or by the room key when Hermes prefixes it as a session environment key; a stored id must match even when that record is the only one with the command, and a record written before the field existed still matches through the room key. A persistent Docker profile keys the session by profile, not by room, so its effective id (`default` for the default profile, `profile:<name>` for another) names no room: it chains the one record that has the command and stays ambiguous with two. Two rooms with the same command line therefore do not move each other's record, and reading the same completion again returns the record it already moved. The room starts that command and handles the report above it, and does not call `bridge_watch add` again, because the record already holds it. If the watch is no longer wanted, the room calls `bridge_watch remove` instead. The plugin leaves that one call to the room: the output hook has no room context of its own, so it cannot start a process that is sure to wake this room. The room still makes one tool call, so this removes the cursor step, not the turn.
+
+The completion keeps the last 2000 characters, so a long report can lose its head after the note is added. The note then says to read the full report with `process` `log` on the same process before acting; that result is not cut to 2000 characters. The record has already moved, so the room does not lose the cursor.
+
+No chaining happens on a nonzero exit (including the watcher's time limit, exit 3), on a report without a `cursor:` line, or on the time-limit message. The record stays as it is and the room gets the output once, as before.
+
+The added block is part of the same completion. With `display.background_process_notifications: off` only the agent turn sees it; another setting can also show the output to the chat, so keep it off where the room should be the only reader.
 
 ## Limits
 
