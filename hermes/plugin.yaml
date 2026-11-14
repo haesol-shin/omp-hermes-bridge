@@ -14,6 +14,7 @@ provides_tools:
 provides_hooks:
   - pre_gateway_dispatch
   - pre_llm_call
+  - transform_terminal_output
 config_schema:
   hosts:
     type: dict
